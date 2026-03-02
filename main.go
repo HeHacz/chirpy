@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hehacz/chirpy/internal/database"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -17,12 +18,21 @@ import (
 type apiConfig struct {
 	dbQueries      *database.Queries
 	fileserverHits atomic.Int32
+	platform       string
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	db, err := sql.Open("postgres", dbURL)
+	env := os.Getenv("PLATFORM")
 	if err != nil {
 		log.Fatalf("cant open database")
 	}
@@ -30,6 +40,7 @@ func main() {
 	apiCfg := apiConfig{
 		dbQueries:      database.New(db),
 		fileserverHits: atomic.Int32{},
+		platform:       env,
 	}
 	mux := http.NewServeMux()
 	handler := http.FileServer(http.Dir(rootPath))
@@ -38,6 +49,7 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", handlerMetrics(&apiCfg))
 	mux.HandleFunc("POST /admin/reset", handlerReset(&apiCfg))
 	mux.HandleFunc("POST /api/validate_chirp", handlerValidate)
+	mux.HandleFunc("POST /api/users", (&apiCfg).handlerCreateUser)
 	server := http.Server{
 		Addr:              "127.0.0.1:8080",
 		Handler:           mux,
